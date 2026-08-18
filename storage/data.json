@@ -1,0 +1,22 @@
+{
+  "users": [
+    {
+      "id": "usr_admin",
+      "email": "admin@picmarket.com",
+      "name": "Administrator",
+      "createdAt": "2026-08-16T19:44:02.233Z"
+    }
+  ],
+  "folders": [],
+  "images": [],
+  "settings": {
+    "targetImageSizeMb": 2,
+    "defaultQuality": 85,
+    "keepOriginal": false,
+    "outputFormat": "keep",
+    "uploadConcurrency": 5,
+    "publicImageUrl": "",
+    "storageDriver": "local",
+    "duplicateAction": "allow"
+  }
+}

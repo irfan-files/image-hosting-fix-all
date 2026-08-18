@@ -1,0 +1,6 @@
+{
+  "name": "PicMarket - Marketplace Image Host",
+  "description": "Full-stack image hosting, adaptive compression, folder hierarchy management, and marketplace direct URL mapping tool.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
