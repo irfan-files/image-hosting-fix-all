@@ -1,7 +1,13 @@
-import fs from 'fs';
-import path from 'path';
-import crypto from 'crypto';
-import { User, Folder, ImageItem, AppSettings, StorageStats } from '../../src/types';
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+import {
+  User,
+  Folder,
+  ImageItem,
+  AppSettings,
+  StorageStats,
+} from "../../src/types";
 
 interface DatabaseSchema {
   users: User[];
@@ -14,11 +20,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   targetImageSizeMb: 2,
   defaultQuality: 85,
   keepOriginal: false,
-  outputFormat: 'keep',
+  outputFormat: "keep",
   uploadConcurrency: 6,
-  publicImageUrl: '',
-  storageDriver: 'local',
-  duplicateAction: 'allow'
+  publicImageUrl: "",
+  storageDriver: "local",
+  duplicateAction: "allow",
 };
 
 export class Database {
@@ -31,14 +37,14 @@ export class Database {
   private saveDebounceTimer: NodeJS.Timeout | null = null;
 
   constructor(dbPath?: string) {
-    this.dbPath = dbPath || path.join(process.cwd(), 'storage', 'data.json');
+    this.dbPath = dbPath || path.join(process.cwd(), "storage", "data.json");
     this.bakPath = `${this.dbPath}.bak`;
     this.bak2Path = `${this.dbPath}.bak2`;
     this.data = {
       users: [],
       folders: [],
       images: [],
-      settings: DEFAULT_SETTINGS
+      settings: DEFAULT_SETTINGS,
     };
     this.init();
 
@@ -47,12 +53,12 @@ export class Database {
       this.flushSync();
     };
 
-    process.on('beforeExit', flushHandler);
-    process.on('SIGINT', () => {
+    process.on("beforeExit", flushHandler);
+    process.on("SIGINT", () => {
       flushHandler();
       process.exit(0);
     });
-    process.on('SIGTERM', () => {
+    process.on("SIGTERM", () => {
       flushHandler();
       process.exit(0);
     });
@@ -72,7 +78,7 @@ export class Database {
     const tryReadFile = (filePath: string): DatabaseSchema | null => {
       if (!fs.existsSync(filePath)) return null;
       try {
-        const raw = fs.readFileSync(filePath, 'utf-8');
+        const raw = fs.readFileSync(filePath, "utf-8");
         if (!raw || raw.trim().length === 0) return null;
         const parsed = JSON.parse(raw);
         if (parsed && Array.isArray(parsed.images)) {
@@ -94,14 +100,18 @@ export class Database {
     if (bak && (bak.images?.length || 0) > maxImageCount) {
       candidateData = bak;
       maxImageCount = bak.images.length;
-      console.log(`[Database] Found backup with larger dataset (${maxImageCount} images), selecting backup.`);
+      console.log(
+        `[Database] Found backup with larger dataset (${maxImageCount} images), selecting backup.`,
+      );
     }
 
     const bak2 = tryReadFile(this.bak2Path);
     if (bak2 && (bak2.images?.length || 0) > maxImageCount) {
       candidateData = bak2;
       maxImageCount = bak2.images.length;
-      console.log(`[Database] Found secondary backup with larger dataset (${maxImageCount} images), selecting secondary backup.`);
+      console.log(
+        `[Database] Found secondary backup with larger dataset (${maxImageCount} images), selecting secondary backup.`,
+      );
     }
 
     if (candidateData) {
@@ -111,18 +121,22 @@ export class Database {
       if (!this.data.folders) this.data.folders = [];
       if (!this.data.users) this.data.users = [];
       loaded = true;
-      console.log(`[Database] Successfully loaded database with ${this.data.images.length} images and ${this.data.folders.length} folders.`);
+      console.log(
+        `[Database] Successfully loaded database with ${this.data.images.length} images and ${this.data.folders.length} folders.`,
+      );
       this.deduplicateImages();
     }
 
     if (!loaded || this.data.users.length === 0) {
       // Create initial admin user if clean start
-      this.data.users = [{
-        id: 'usr_admin',
-        email: 'admin@picmarket.com',
-        name: 'Administrator',
-        createdAt: new Date().toISOString()
-      }];
+      this.data.users = [
+        {
+          id: "usr_admin",
+          email: "admin@picmarket.com",
+          name: "Administrator",
+          createdAt: new Date().toISOString(),
+        },
+      ];
       this.flushSync();
     }
 
@@ -130,8 +144,8 @@ export class Database {
     this.cleanAndDeduplicateAllImages();
 
     // Always run disk reconciliation on startup to auto-recover any stored image files from disk
-    this.reconcileWithDiskStorage('usr_admin').catch((err) =>
-      console.error('Auto-disk reconciliation error:', err)
+    this.reconcileWithDiskStorage("usr_admin").catch((err) =>
+      console.error("Auto-disk reconciliation error:", err),
     );
   }
 
@@ -141,7 +155,7 @@ export class Database {
   public cleanAndDeduplicateAllImages(): number {
     if (!this.data.images || this.data.images.length === 0) return 0;
     const initialCount = this.data.images.length;
-    const uploadsDir = path.join(process.cwd(), 'storage', 'uploads');
+    const uploadsDir = path.join(process.cwd(), "storage", "uploads");
 
     // Hash suffix regex matching names like "000-adb305d7.jpg" or "image_name-2ad785ae.png"
     const HASH_SUFFIX_REGEX = /^(.+?)-[a-f0-9]{6,12}\.([a-zA-Z0-9]+)$/i;
@@ -151,12 +165,14 @@ export class Database {
     const existingCleanEntries = new Set<string>();
     for (const img of this.data.images) {
       if (!img || !img.originalFilename) continue;
-      const uId = img.userId || 'usr_admin';
-      const fPath = (img.folderPath || '').toLowerCase().trim();
+      const uId = img.userId || "usr_admin";
+      const fPath = (img.folderPath || "").toLowerCase().trim();
       const origName = img.originalFilename.trim();
       const match = origName.match(HASH_SUFFIX_REGEX);
       if (!match) {
-        existingCleanEntries.add(`${uId}///${fPath}///${origName.toLowerCase()}`);
+        existingCleanEntries.add(
+          `${uId}///${fPath}///${origName.toLowerCase()}`,
+        );
       }
     }
 
@@ -168,10 +184,10 @@ export class Database {
     // Step 2: Iterate images, normalize single hashed entries, and prune duplicates
     for (const img of this.data.images) {
       if (!img || !img.id) continue;
-      const uId = img.userId || 'usr_admin';
-      const fPath = (img.folderPath || '').trim();
+      const uId = img.userId || "usr_admin";
+      const fPath = (img.folderPath || "").trim();
       const lowerFPath = fPath.toLowerCase();
-      let origName = (img.originalFilename || '').trim();
+      let origName = (img.originalFilename || "").trim();
       const match = origName.match(HASH_SUFFIX_REGEX);
 
       if (match) {
@@ -197,15 +213,20 @@ export class Database {
           // No clean version exists; normalize this image to cleanBaseName on disk and in DB
           try {
             const oldStoragePath = img.storagePath;
-            const newStorageRelPath = fPath ? `${fPath}/${cleanBaseName}` : cleanBaseName;
-            const newThumbRelPath = fPath ? `${fPath}/thumbs/${cleanBaseName}.webp` : `thumbs/${cleanBaseName}.webp`;
+            const newStorageRelPath = fPath
+              ? `${fPath}/${cleanBaseName}`
+              : cleanBaseName;
+            const newThumbRelPath = fPath
+              ? `${fPath}/thumbs/${cleanBaseName}.webp`
+              : `thumbs/${cleanBaseName}.webp`;
 
             if (oldStoragePath && oldStoragePath !== newStorageRelPath) {
               const oldDiskFile = path.join(uploadsDir, oldStoragePath);
               const newDiskFile = path.join(uploadsDir, newStorageRelPath);
               if (fs.existsSync(oldDiskFile)) {
                 const targetDir = path.dirname(newDiskFile);
-                if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+                if (!fs.existsSync(targetDir))
+                  fs.mkdirSync(targetDir, { recursive: true });
                 fs.renameSync(oldDiskFile, newDiskFile);
               }
             }
@@ -215,7 +236,8 @@ export class Database {
               const newThumbFile = path.join(uploadsDir, newThumbRelPath);
               if (fs.existsSync(oldThumbFile)) {
                 const targetThumbDir = path.dirname(newThumbFile);
-                if (!fs.existsSync(targetThumbDir)) fs.mkdirSync(targetThumbDir, { recursive: true });
+                if (!fs.existsSync(targetThumbDir))
+                  fs.mkdirSync(targetThumbDir, { recursive: true });
                 fs.renameSync(oldThumbFile, newThumbFile);
               }
             }
@@ -228,16 +250,23 @@ export class Database {
             img.thumbnailPath = newThumbRelPath;
             existingCleanEntries.add(cleanKey);
           } catch (renErr) {
-            console.warn('Failed to rename disk file during normalization:', renErr);
+            console.warn(
+              "Failed to rename disk file during normalization:",
+              renErr,
+            );
           }
         }
       }
 
       // Enforce strict uniqueness per (user, folder, filename)
       const folderFileKey = `${uId}///${lowerFPath}///${origName.toLowerCase()}`;
-      const pathKey = img.storagePath ? img.storagePath.toLowerCase() : '';
+      const pathKey = img.storagePath ? img.storagePath.toLowerCase() : "";
 
-      if (seenIds.has(img.id) || seenFolderFileKeys.has(folderFileKey) || (pathKey && seenStoragePaths.has(pathKey))) {
+      if (
+        seenIds.has(img.id) ||
+        seenFolderFileKeys.has(folderFileKey) ||
+        (pathKey && seenStoragePaths.has(pathKey))
+      ) {
         continue;
       }
 
@@ -249,7 +278,9 @@ export class Database {
 
     const removed = initialCount - cleanList.length;
     if (removed > 0 || cleanList.length !== this.data.images.length) {
-      console.log(`[Database] Normalized filenames and removed ${removed} duplicate image entries.`);
+      console.log(
+        `[Database] Normalized filenames and removed ${removed} duplicate image entries.`,
+      );
       this.data.images = cleanList;
       this.flushSync();
     }
@@ -266,11 +297,21 @@ export class Database {
   /**
    * Scans disk storage directory recursively and auto-registers any missing files into database
    */
-  public async reconcileWithDiskStorage(userId = 'usr_admin'): Promise<{ scanned: number; restored: number }> {
-    const uploadsDir = path.join(process.cwd(), 'storage', 'uploads');
+  public async reconcileWithDiskStorage(
+    userId = "usr_admin",
+  ): Promise<{ scanned: number; restored: number }> {
+    const uploadsDir = path.join(process.cwd(), "storage", "uploads");
     if (!fs.existsSync(uploadsDir)) return { scanned: 0, restored: 0 };
 
-    const allowedExts = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif', '.svg']);
+    const allowedExts = new Set([
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp",
+      ".avif",
+      ".gif",
+      ".svg",
+    ]);
     let scanned = 0;
     let restored = 0;
 
@@ -278,14 +319,17 @@ export class Database {
     const existingStoragePaths = new Set<string>();
     const existingFilenames = new Set<string>();
     for (const img of this.data.images) {
-      if (img.storagePath) existingStoragePaths.add(img.storagePath.toLowerCase());
-      if (img.storedFilename) existingFilenames.add(img.storedFilename.toLowerCase());
-      if (img.originalFilename) existingFilenames.add(img.originalFilename.toLowerCase());
+      if (img.storagePath)
+        existingStoragePaths.add(img.storagePath.toLowerCase());
+      if (img.storedFilename)
+        existingFilenames.add(img.storedFilename.toLowerCase());
+      if (img.originalFilename)
+        existingFilenames.add(img.originalFilename.toLowerCase());
     }
 
     const newlyDiscoveredImages: ImageItem[] = [];
 
-    const walk = (currentDir: string, relativePathPrefix = '') => {
+    const walk = (currentDir: string, relativePathPrefix = "") => {
       let entries: fs.Dirent[] = [];
       try {
         entries = fs.readdirSync(currentDir, { withFileTypes: true });
@@ -296,21 +340,23 @@ export class Database {
       for (const entry of entries) {
         const lowerName = entry.name.toLowerCase();
         if (
-          entry.name.startsWith('.') ||
-          entry.name.startsWith('._') ||
-          lowerName === 'thumbs' ||
-          lowerName === 'thumbnails' ||
-          lowerName === '.thumbs' ||
-          lowerName === 'preview' ||
-          lowerName === 'previews' ||
-          lowerName === 'cache' ||
-          lowerName === '__macosx'
+          entry.name.startsWith(".") ||
+          entry.name.startsWith("._") ||
+          lowerName === "thumbs" ||
+          lowerName === "thumbnails" ||
+          lowerName === ".thumbs" ||
+          lowerName === "preview" ||
+          lowerName === "previews" ||
+          lowerName === "cache" ||
+          lowerName === "__macosx"
         ) {
           continue;
         }
 
         const fullPath = path.join(currentDir, entry.name);
-        const relPath = relativePathPrefix ? `${relativePathPrefix}/${entry.name}` : entry.name;
+        const relPath = relativePathPrefix
+          ? `${relativePathPrefix}/${entry.name}`
+          : entry.name;
 
         if (entry.isDirectory()) {
           walk(fullPath, relPath);
@@ -318,7 +364,7 @@ export class Database {
           const ext = path.extname(entry.name).toLowerCase();
           if (allowedExts.has(ext)) {
             scanned++;
-            
+
             // Check if already in DB in O(1)
             const exists =
               existingStoragePaths.has(relPath.toLowerCase()) ||
@@ -327,24 +373,31 @@ export class Database {
             if (!exists) {
               try {
                 const stat = fs.statSync(fullPath);
-                const folderPathStr = relativePathPrefix || '';
+                const folderPathStr = relativePathPrefix || "";
                 let folderId: string | null = null;
 
                 if (folderPathStr) {
-                  const folder = this.findOrCreateFolderPath(userId, folderPathStr, false);
+                  const folder = this.findOrCreateFolderPath(
+                    userId,
+                    folderPathStr,
+                    false,
+                  );
                   folderId = folder.id;
                 }
 
                 const baseName = path.parse(entry.name).name;
-                const cleanExt = ext.replace('.', '');
-                const mimeType = `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`;
-                const baseUrl = this.data.settings.publicImageUrl || 'http://localhost:3000';
-                const directUrl = `${baseUrl.replace(/\/$/, '')}/images/${relPath.split('/').map(encodeURIComponent).join('/')}`;
-                const thumbRelPath = folderPathStr ? `${folderPathStr}/thumbs/${entry.name}.webp` : `thumbs/${entry.name}.webp`;
-                const thumbnailUrl = `${baseUrl.replace(/\/$/, '')}/images/${thumbRelPath.split('/').map(encodeURIComponent).join('/')}`;
+                const cleanExt = ext.replace(".", "");
+                const mimeType = `image/${cleanExt === "jpg" ? "jpeg" : cleanExt}`;
+                const baseUrl =
+                  this.data.settings.publicImageUrl || "http://localhost:3000";
+                const directUrl = `${baseUrl.replace(/\/$/, "")}/images/${relPath.split("/").map(encodeURIComponent).join("/")}`;
+                const thumbRelPath = folderPathStr
+                  ? `${folderPathStr}/thumbs/${entry.name}.webp`
+                  : `thumbs/${entry.name}.webp`;
+                const thumbnailUrl = `${baseUrl.replace(/\/$/, "")}/images/${thumbRelPath.split("/").map(encodeURIComponent).join("/")}`;
 
                 const newImg: ImageItem = {
-                  id: `img_${crypto.randomBytes(8).toString('hex')}`,
+                  id: `img_${crypto.randomBytes(8).toString("hex")}`,
                   userId,
                   folderId,
                   folderPath: folderPathStr,
@@ -362,9 +415,11 @@ export class Database {
                   directUrl,
                   thumbnailUrl,
                   checksum: `${entry.name}_${stat.size}`,
-                  status: 'active',
-                  createdAt: stat.birthtime ? stat.birthtime.toISOString() : new Date().toISOString(),
-                  updatedAt: new Date().toISOString()
+                  status: "active",
+                  createdAt: stat.birthtime
+                    ? stat.birthtime.toISOString()
+                    : new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
                 };
 
                 newlyDiscoveredImages.push(newImg);
@@ -384,11 +439,13 @@ export class Database {
       walk(uploadsDir);
       if (newlyDiscoveredImages.length > 0) {
         this.data.images.push(...newlyDiscoveredImages);
-        console.log(`[Auto-Recovery] Discovered and restored ${restored} missing images from disk! Total database images: ${this.data.images.length}`);
+        console.log(
+          `[Auto-Recovery] Discovered and restored ${restored} missing images from disk! Total database images: ${this.data.images.length}`,
+        );
         this.flushSync();
       }
     } catch (e) {
-      console.error('Error walking storage directory:', e);
+      console.error("Error walking storage directory:", e);
     }
 
     return { scanned, restored };
@@ -405,7 +462,7 @@ export class Database {
       }
       const serialized = JSON.stringify(this.data);
       const tempPath = `${this.dbPath}.${Date.now()}.${Math.random().toString(36).substring(2, 6)}.tmp`;
-      fs.writeFileSync(tempPath, serialized, 'utf-8');
+      fs.writeFileSync(tempPath, serialized, "utf-8");
 
       // Rotate backups before replacing main
       if (fs.existsSync(this.bakPath)) {
@@ -421,7 +478,7 @@ export class Database {
 
       fs.renameSync(tempPath, this.dbPath);
     } catch (e) {
-      console.error('Failed to flush database sync:', e);
+      console.error("Failed to flush database sync:", e);
     }
   }
 
@@ -460,8 +517,8 @@ export class Database {
       // Compact JSON to reduce disk I/O and memory overhead with 5,000+ files
       const serialized = JSON.stringify(this.data);
       const tempPath = `${this.dbPath}.${Date.now()}.${Math.random().toString(36).substring(2, 6)}.tmp`;
-      
-      await fs.promises.writeFile(tempPath, serialized, 'utf-8');
+
+      await fs.promises.writeFile(tempPath, serialized, "utf-8");
 
       // Rotate backup snapshots safely
       if (fs.existsSync(this.bakPath)) {
@@ -477,7 +534,7 @@ export class Database {
 
       await fs.promises.rename(tempPath, this.dbPath);
     } catch (e) {
-      console.error('Failed to save database asynchronously:', e);
+      console.error("Failed to save database asynchronously:", e);
       this.hasPendingSave = true; // Retry on next cycle
     } finally {
       this.isSaving = false;
@@ -493,15 +550,17 @@ export class Database {
   }
 
   public getUserByEmail(email: string): User | undefined {
-    return this.data.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    return this.data.users.find(
+      (u) => u.email.toLowerCase() === email.toLowerCase(),
+    );
   }
 
   public createUser(email: string, name: string): User {
     const user: User = {
-      id: `usr_${crypto.randomBytes(6).toString('hex')}`,
+      id: `usr_${crypto.randomBytes(6).toString("hex")}`,
       email,
       name,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
     this.data.users.push(user);
     this.save();
@@ -513,7 +572,10 @@ export class Database {
     const folders = this.data.folders.filter((f) => f.userId === userId);
     return folders.map((f) => {
       const itemCount = this.data.images.filter(
-        (img) => img.userId === userId && img.folderId === f.id && img.status === 'active'
+        (img) =>
+          img.userId === userId &&
+          img.folderId === f.id &&
+          img.status === "active",
       ).length;
       return { ...f, itemCount };
     });
@@ -523,36 +585,48 @@ export class Database {
     return this.data.folders.find((f) => f.id === id);
   }
 
-  public findOrCreateFolderPath(userId: string, folderPathString: string, autoSave = true): Folder {
-    if (!folderPathString || folderPathString.trim() === '' || folderPathString === '/' || folderPathString === '.') {
-      throw new Error('Invalid folder path');
+  public findOrCreateFolderPath(
+    userId: string,
+    folderPathString: string,
+    autoSave = true,
+  ): Folder {
+    if (
+      !folderPathString ||
+      folderPathString.trim() === "" ||
+      folderPathString === "/" ||
+      folderPathString === "."
+    ) {
+      throw new Error("Invalid folder path");
     }
 
-    const segments = folderPathString.split('/').filter(Boolean);
+    const segments = folderPathString.split("/").filter(Boolean);
     let parentId: string | null = null;
-    let currentPath = '';
+    let currentPath = "";
     let currentFolder: Folder | null = null;
 
     for (const segment of segments) {
       currentPath = currentPath ? `${currentPath}/${segment}` : segment;
       const existing = this.data.folders.find(
-        (f) => f.userId === userId && f.parentId === parentId && f.name.toLowerCase() === segment.toLowerCase()
+        (f) =>
+          f.userId === userId &&
+          f.parentId === parentId &&
+          f.name.toLowerCase() === segment.toLowerCase(),
       );
 
       if (existing) {
         parentId = existing.id;
         currentFolder = existing;
       } else {
-        const slug = segment.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+        const slug = segment.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
         const newFolder: Folder = {
-          id: `fld_${crypto.randomBytes(6).toString('hex')}`,
+          id: `fld_${crypto.randomBytes(6).toString("hex")}`,
           userId,
           parentId,
           name: segment,
           slug,
           path: currentPath,
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         };
         this.data.folders.push(newFolder);
         parentId = newFolder.id;
@@ -566,7 +640,11 @@ export class Database {
     return currentFolder!;
   }
 
-  public createFolder(userId: string, name: string, parentId: string | null = null): Folder {
+  public createFolder(
+    userId: string,
+    name: string,
+    parentId: string | null = null,
+  ): Folder {
     let folderPath = name;
     if (parentId) {
       const parent = this.getFolderById(parentId);
@@ -575,16 +653,16 @@ export class Database {
       }
     }
 
-    const slug = name.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const slug = name.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
     const folder: Folder = {
-      id: `fld_${crypto.randomBytes(6).toString('hex')}`,
+      id: `fld_${crypto.randomBytes(6).toString("hex")}`,
       userId,
       parentId,
       name,
       slug,
       path: folderPath,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
     };
 
     this.data.folders.push(folder);
@@ -598,7 +676,7 @@ export class Database {
 
     const oldPath = folder.path;
     folder.name = newName;
-    folder.slug = newName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    folder.slug = newName.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
 
     // Update path
     if (folder.parentId) {
@@ -636,13 +714,16 @@ export class Database {
 
     // Delete folder and child folders
     this.data.folders = this.data.folders.filter(
-      (f) => f.id !== id && f.path !== pathPrefix && !f.path.startsWith(`${pathPrefix}/`)
+      (f) =>
+        f.id !== id &&
+        f.path !== pathPrefix &&
+        !f.path.startsWith(`${pathPrefix}/`),
     );
 
     // Delete or trash associated images
     for (const img of this.data.images) {
       if (img.folderId === id || img.folderPath.startsWith(pathPrefix)) {
-        img.status = 'trash';
+        img.status = "trash";
         img.updatedAt = new Date().toISOString();
       }
     }
@@ -654,21 +735,40 @@ export class Database {
   public resolveImageUrls(img: ImageItem, cleanBase?: string): ImageItem {
     if (!img) return img;
     const finalBaseUrl =
-      (this.data.settings.publicImageUrl && this.data.settings.publicImageUrl.trim()) ||
+      (this.data.settings.publicImageUrl &&
+        this.data.settings.publicImageUrl.trim()) ||
       cleanBase ||
-      'http://localhost:3000';
-    const cleanBaseUrl = finalBaseUrl.replace(/\/+$/, '');
+      "http://localhost:3000";
+    const cleanBaseUrl = finalBaseUrl.replace(/\/+$/, "");
 
-    const relStorage = img.storagePath || (img.folderPath ? `${img.folderPath}/${img.originalFilename}` : img.originalFilename);
-    const relThumb = img.thumbnailPath || (img.folderPath ? `${img.folderPath}/thumbs/${img.originalFilename}.webp` : `thumbs/${img.originalFilename}.webp`);
+    const relStorage =
+      img.storagePath ||
+      (img.folderPath
+        ? `${img.folderPath}/${img.originalFilename}`
+        : img.originalFilename);
+    const relThumb =
+      img.thumbnailPath ||
+      (img.folderPath
+        ? `${img.folderPath}/thumbs/${img.originalFilename}.webp`
+        : `thumbs/${img.originalFilename}.webp`);
 
-    const sanitizedStorage = relStorage.replace(/\\/g, '/').split('/').filter(Boolean).map(encodeURIComponent).join('/');
-    const sanitizedThumb = relThumb.replace(/\\/g, '/').split('/').filter(Boolean).map(encodeURIComponent).join('/');
+    const sanitizedStorage = relStorage
+      .replace(/\\/g, "/")
+      .split("/")
+      .filter(Boolean)
+      .map(encodeURIComponent)
+      .join("/");
+    const sanitizedThumb = relThumb
+      .replace(/\\/g, "/")
+      .split("/")
+      .filter(Boolean)
+      .map(encodeURIComponent)
+      .join("/");
 
     return {
       ...img,
       directUrl: `${cleanBaseUrl}/images/${sanitizedStorage}`,
-      thumbnailUrl: `${cleanBaseUrl}/images/${sanitizedThumb}`
+      thumbnailUrl: `${cleanBaseUrl}/images/${sanitizedThumb}`,
     };
   }
 
@@ -677,25 +777,85 @@ export class Database {
     userId: string,
     options: {
       folderId?: string;
-      status?: 'active' | 'trash';
+      folderPath?: string;
+      parentFolderId?: string;
+      rootFolderId?: string;
+      includeSubfolders?: boolean;
+      status?: "active" | "trash";
       search?: string;
       mimeType?: string;
       sortBy?: string;
-      sortOrder?: 'asc' | 'desc';
+      sortOrder?: "asc" | "desc";
       page?: number;
       limit?: number;
     } = {},
-    reqBaseUrl?: string
+    reqBaseUrl?: string,
   ): { images: ImageItem[]; total: number; pages: number } {
-    const status = options.status || 'active';
-    let filtered = this.data.images.filter((img) => img.userId === userId && img.status === status);
+    const status = options.status || "active";
+    let filtered = this.data.images.filter(
+      (img) => img.userId === userId && img.status === status,
+    );
 
-    if (options.folderId !== undefined) {
-      if (options.folderId === 'root') {
-        filtered = filtered.filter((img) => !img.folderId);
-      } else if (options.folderId) {
-        filtered = filtered.filter((img) => img.folderId === options.folderId);
+    const includeSubfolders = options.includeSubfolders !== false;
+
+    if (
+      options.folderId !== undefined &&
+      options.folderId !== null &&
+      options.folderId !== ""
+    ) {
+      if (options.folderId === "root") {
+        filtered = filtered.filter(
+          (img) => !img.folderId || img.folderId === "" || !img.folderPath,
+        );
+      } else if (options.folderId !== "all") {
+        const targetFolder = this.getFolderById(options.folderId);
+
+        if (targetFolder) {
+          const targetPath = (targetFolder.path || "").toLowerCase();
+          const targetFolderId = targetFolder.id;
+
+          // Find all subfolder IDs recursively
+          const matchingFolderIds = new Set<string>([targetFolderId]);
+          if (includeSubfolders) {
+            const findChildren = (pId: string) => {
+              for (const f of this.data.folders) {
+                if (f.parentId === pId && !matchingFolderIds.has(f.id)) {
+                  matchingFolderIds.add(f.id);
+                  findChildren(f.id);
+                }
+              }
+            };
+            findChildren(targetFolderId);
+          }
+
+          filtered = filtered.filter((img) => {
+            if (img.folderId && matchingFolderIds.has(img.folderId))
+              return true;
+            if (img.folderPath) {
+              const imgPath = img.folderPath.toLowerCase();
+              if (imgPath === targetPath) return true;
+              if (includeSubfolders && imgPath.startsWith(`${targetPath}/`))
+                return true;
+            }
+            return false;
+          });
+        } else {
+          // Fallback direct ID match
+          filtered = filtered.filter(
+            (img) => img.folderId === options.folderId,
+          );
+        }
       }
+    } else if (options.folderPath) {
+      const targetPath = options.folderPath.toLowerCase();
+      filtered = filtered.filter((img) => {
+        if (!img.folderPath) return false;
+        const imgPath = img.folderPath.toLowerCase();
+        if (imgPath === targetPath) return true;
+        if (includeSubfolders && imgPath.startsWith(`${targetPath}/`))
+          return true;
+        return false;
+      });
     }
 
     if (options.search) {
@@ -704,44 +864,74 @@ export class Database {
         (img) =>
           img.originalFilename.toLowerCase().includes(q) ||
           img.storedFilename.toLowerCase().includes(q) ||
-          img.folderPath.toLowerCase().includes(q)
+          img.folderPath.toLowerCase().includes(q),
       );
     }
 
     if (options.mimeType) {
-      filtered = filtered.filter((img) => img.mimeType.toLowerCase().includes(options.mimeType!.toLowerCase()));
+      filtered = filtered.filter((img) =>
+        img.mimeType.toLowerCase().includes(options.mimeType!.toLowerCase()),
+      );
     }
 
     // Sort with natural alphanumeric collation (e.g. iPhone 2 before iPhone 10)
-    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-    const sortBy = options.sortBy || 'folder_name';
-    const sortOrder = options.sortOrder || 'asc';
+    const collator = new Intl.Collator(undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    const sortBy = options.sortBy || "folder_name";
+    const sortOrder = options.sortOrder || "asc";
 
     filtered.sort((a, b) => {
       let comparison = 0;
 
-      if (sortBy === 'folder_name' || sortBy === 'folder_then_name_asc' || sortBy === 'folder_then_name_desc') {
-        const folderComp = collator.compare(a.folderPath || '', b.folderPath || '');
+      if (
+        sortBy === "folder_name" ||
+        sortBy === "folder_then_name_asc" ||
+        sortBy === "folder_then_name_desc"
+      ) {
+        const folderComp = collator.compare(
+          a.folderPath || "",
+          b.folderPath || "",
+        );
         if (folderComp !== 0) {
           comparison = folderComp;
         } else {
           comparison = collator.compare(a.originalFilename, b.originalFilename);
         }
-      } else if (sortBy === 'name' || sortBy === 'name_asc' || sortBy === 'name_desc') {
-        const nameComp = collator.compare(a.originalFilename, b.originalFilename);
+      } else if (
+        sortBy === "name" ||
+        sortBy === "name_asc" ||
+        sortBy === "name_desc"
+      ) {
+        const nameComp = collator.compare(
+          a.originalFilename,
+          b.originalFilename,
+        );
         if (nameComp !== 0) {
           comparison = nameComp;
         } else {
-          comparison = collator.compare(a.folderPath || '', b.folderPath || '');
+          comparison = collator.compare(a.folderPath || "", b.folderPath || "");
         }
-      } else if (sortBy === 'folder' || sortBy === 'folder_asc' || sortBy === 'folder_desc') {
-        const folderComp = collator.compare(a.folderPath || '', b.folderPath || '');
+      } else if (
+        sortBy === "folder" ||
+        sortBy === "folder_asc" ||
+        sortBy === "folder_desc"
+      ) {
+        const folderComp = collator.compare(
+          a.folderPath || "",
+          b.folderPath || "",
+        );
         if (folderComp !== 0) {
           comparison = folderComp;
         } else {
           comparison = collator.compare(a.originalFilename, b.originalFilename);
         }
-      } else if (sortBy === 'size' || sortBy === 'size_asc' || sortBy === 'size_desc') {
+      } else if (
+        sortBy === "size" ||
+        sortBy === "size_asc" ||
+        sortBy === "size_desc"
+      ) {
         comparison = a.compressedSize - b.compressedSize;
       } else {
         // Default to createdAt
@@ -752,20 +942,30 @@ export class Database {
 
       // Check if sortOrder should reverse
       const isDescending =
-        sortOrder === 'desc' ||
-        sortBy.endsWith('_desc') ||
-        (sortBy === 'createdAt' && !options.sortOrder);
+        sortOrder === "desc" ||
+        sortBy.endsWith("_desc") ||
+        (sortBy === "createdAt" && !options.sortOrder);
 
       return isDescending ? -comparison : comparison;
     });
 
     const total = filtered.length;
     const page = options.page || 1;
-    const limit = options.limit || 50;
-    const pages = Math.ceil(total / limit) || 1;
+    // Unlimited export/query handling when limit is 0, negative, or undefined
+    const isUnlimited =
+      options.limit === 0 ||
+      options.limit === -1 ||
+      options.limit === undefined ||
+      options.limit >= 1000000;
+    const limit = isUnlimited ? (total > 0 ? total : 1) : options.limit || 50;
+    const pages = isUnlimited ? 1 : Math.ceil(total / limit) || 1;
 
-    const paginated = filtered.slice((page - 1) * limit, page * limit);
-    const resolved = paginated.map((img) => this.resolveImageUrls(img, reqBaseUrl));
+    const paginated = isUnlimited
+      ? filtered
+      : filtered.slice((page - 1) * limit, page * limit);
+    const resolved = paginated.map((img) =>
+      this.resolveImageUrls(img, reqBaseUrl),
+    );
 
     return { images: resolved, total, pages };
   }
@@ -776,27 +976,45 @@ export class Database {
     return this.resolveImageUrls(img, reqBaseUrl);
   }
 
-  public getImageByChecksum(userId: string, checksum: string): ImageItem | undefined {
-    return this.data.images.find((img) => img.userId === userId && img.checksum === checksum && img.status === 'active');
+  public getImageByChecksum(
+    userId: string,
+    checksum: string,
+  ): ImageItem | undefined {
+    return this.data.images.find(
+      (img) =>
+        img.userId === userId &&
+        img.checksum === checksum &&
+        img.status === "active",
+    );
   }
 
   public addImage(image: ImageItem): ImageItem {
-    const uId = image.userId || 'usr_admin';
-    const fPath = (image.folderPath || '').toLowerCase().trim();
-    const origName = (image.originalFilename || '').toLowerCase().trim();
-    const pathKey = image.storagePath ? image.storagePath.toLowerCase() : '';
+    const uId = image.userId || "usr_admin";
+    const fPath = (image.folderPath || "").toLowerCase().trim();
+    const origName = (image.originalFilename || "").toLowerCase().trim();
+    const pathKey = image.storagePath ? image.storagePath.toLowerCase() : "";
 
     const existingIndex = this.data.images.findIndex((img) => {
       if (img.id === image.id) return true;
-      if (pathKey && img.storagePath && img.storagePath.toLowerCase() === pathKey) return true;
-      const otherUId = img.userId || 'usr_admin';
-      const otherFPath = (img.folderPath || '').toLowerCase().trim();
-      const otherOrigName = (img.originalFilename || '').toLowerCase().trim();
-      return otherUId === uId && otherFPath === fPath && otherOrigName === origName;
+      if (
+        pathKey &&
+        img.storagePath &&
+        img.storagePath.toLowerCase() === pathKey
+      )
+        return true;
+      const otherUId = img.userId || "usr_admin";
+      const otherFPath = (img.folderPath || "").toLowerCase().trim();
+      const otherOrigName = (img.originalFilename || "").toLowerCase().trim();
+      return (
+        otherUId === uId && otherFPath === fPath && otherOrigName === origName
+      );
     });
 
     if (existingIndex !== -1) {
-      this.data.images[existingIndex] = { ...this.data.images[existingIndex], ...image };
+      this.data.images[existingIndex] = {
+        ...this.data.images[existingIndex],
+        ...image,
+      };
     } else {
       this.data.images.push(image);
     }
@@ -806,7 +1024,7 @@ export class Database {
 
   public bulkAddImages(images: ImageItem[]): number {
     if (!images || images.length === 0) return 0;
-    
+
     // Build lookup maps for existing images for fast O(1) matching
     const idMap = new Map<string, number>();
     const pathMap = new Map<string, number>();
@@ -816,9 +1034,9 @@ export class Database {
       const img = this.data.images[i];
       if (img.id) idMap.set(img.id, i);
       if (img.storagePath) pathMap.set(img.storagePath.toLowerCase(), i);
-      const uId = img.userId || 'usr_admin';
-      const fPath = (img.folderPath || '').toLowerCase().trim();
-      const origName = (img.originalFilename || '').toLowerCase().trim();
+      const uId = img.userId || "usr_admin";
+      const fPath = (img.folderPath || "").toLowerCase().trim();
+      const origName = (img.originalFilename || "").toLowerCase().trim();
       if (origName) {
         folderFileMap.set(`${uId}///${fPath}///${origName}`, i);
       }
@@ -828,11 +1046,11 @@ export class Database {
     let updatedCount = 0;
 
     for (const img of images) {
-      const uId = img.userId || 'usr_admin';
-      const fPath = (img.folderPath || '').toLowerCase().trim();
-      const origName = (img.originalFilename || '').toLowerCase().trim();
-      const pathKey = img.storagePath ? img.storagePath.toLowerCase() : '';
-      const folderFileKey = origName ? `${uId}///${fPath}///${origName}` : '';
+      const uId = img.userId || "usr_admin";
+      const fPath = (img.folderPath || "").toLowerCase().trim();
+      const origName = (img.originalFilename || "").toLowerCase().trim();
+      const pathKey = img.storagePath ? img.storagePath.toLowerCase() : "";
+      const folderFileKey = origName ? `${uId}///${fPath}///${origName}` : "";
 
       // Check if image already exists in database
       let matchIdx = -1;
@@ -861,12 +1079,15 @@ export class Database {
     if (toAdd.length > 0) {
       this.data.images.push(...toAdd);
     }
-    
+
     this.flushSync();
     return toAdd.length + updatedCount;
   }
 
-  public updateImage(id: string, updates: Partial<ImageItem>): ImageItem | undefined {
+  public updateImage(
+    id: string,
+    updates: Partial<ImageItem>,
+  ): ImageItem | undefined {
     const img = this.getImageById(id);
     if (!img) return undefined;
 
@@ -882,7 +1103,7 @@ export class Database {
     if (permanent) {
       this.data.images.splice(index, 1);
     } else {
-      this.data.images[index].status = 'trash';
+      this.data.images[index].status = "trash";
       this.data.images[index].updatedAt = new Date().toISOString();
     }
 
@@ -894,7 +1115,7 @@ export class Database {
     const img = this.getImageById(id);
     if (!img) return false;
 
-    img.status = 'active';
+    img.status = "active";
     img.updatedAt = new Date().toISOString();
     this.save();
     return true;
@@ -908,7 +1129,11 @@ export class Database {
     return count;
   }
 
-  public bulkMoveImages(ids: string[], targetFolderId: string | null, targetFolderPath: string): number {
+  public bulkMoveImages(
+    ids: string[],
+    targetFolderId: string | null,
+    targetFolderPath: string,
+  ): number {
     let count = 0;
     for (const id of ids) {
       const img = this.getImageById(id);
@@ -925,7 +1150,9 @@ export class Database {
 
   // --- Stats ---
   public getStorageStats(userId: string): StorageStats {
-    const userImages = this.data.images.filter((img) => img.userId === userId && img.status === 'active');
+    const userImages = this.data.images.filter(
+      (img) => img.userId === userId && img.status === "active",
+    );
     const userFolders = this.data.folders.filter((f) => f.userId === userId);
 
     let originalStorageBytes = 0;
@@ -940,10 +1167,21 @@ export class Database {
       imagesByFormat[ext] = (imagesByFormat[ext] || 0) + 1;
     }
 
-    const storageSavedBytes = Math.max(0, originalStorageBytes - compressedStorageBytes);
-    const savedPercentage = originalStorageBytes > 0 ? Number(((storageSavedBytes / originalStorageBytes) * 100).toFixed(1)) : 0;
+    const storageSavedBytes = Math.max(
+      0,
+      originalStorageBytes - compressedStorageBytes,
+    );
+    const savedPercentage =
+      originalStorageBytes > 0
+        ? Number(((storageSavedBytes / originalStorageBytes) * 100).toFixed(1))
+        : 0;
 
-    const recentUploads = [...userImages].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 10);
+    const recentUploads = [...userImages]
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      .slice(0, 10);
 
     return {
       totalImages: userImages.length,
@@ -954,7 +1192,7 @@ export class Database {
       storageSavedBytes,
       savedPercentage,
       imagesByFormat,
-      recentUploads
+      recentUploads,
     };
   }
 
